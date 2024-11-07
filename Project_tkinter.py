@@ -42,9 +42,10 @@ def duration(d,c,m,y,n,t):
   denominator = sum([(c/(1+y)**t)+m/(1+y)**n])
   return numerator/denominator
 
-#Main window
+# Main window
 fenetre = Tk()
 fenetre.title("Pricer")
+fenetre.geometry("400X300")
 
 label = Label(fenetre, text="Bonjour! Que souhaitez-vous calculer?")
 label.pack()
@@ -57,7 +58,6 @@ liste.insert(3, "obligation")
 liste.insert(4, "duration")
 liste.pack()
 
-
 # Helper function to create labeled entry
 def create_labeled_entry(window, text):
     label = Label(window, text=text)
@@ -65,7 +65,6 @@ def create_labeled_entry(window, text):
     entry = Entry(window)
     entry.pack()
     return entry
-
 
 # Function to handle selection and open the respective input window
 def on_select(event):
@@ -75,6 +74,7 @@ def on_select(event):
 
         if selected_item == "option call":
             call_window = Toplevel(fenetre)
+            call_window.geometry("400x300")
             call_window.title("Option Call Pricing Parameters")
             entry_S = create_labeled_entry(call_window, "Stock price (S):")
             entry_K = create_labeled_entry(call_window, "Strike price (K):")
@@ -82,22 +82,24 @@ def on_select(event):
             entry_T = create_labeled_entry(call_window, "Time to maturity (T):")
             entry_sigma = create_labeled_entry(call_window, "Volatility (sigma):")
 
+            result_label = Label(call_window, text="")
+            result_label.pack()
+
             def calculate_call_price():
                 S = float(entry_S.get())
                 K = float(entry_K.get())
                 r = float(entry_r.get())
                 T = float(entry_T.get())
                 sigma = float(entry_sigma.get())
-                price = call_pricer(S, K, r, T, sigma)
+                price = call_pricer(S, K, r, T, sigma, "call")
                 result_label.config(text=f"Option Call Price: {price:.2f}")
 
             calculate_button = Button(call_window, text="Calculate", command=calculate_call_price)
             calculate_button.pack()
-            result_label = Label(call_window, text="")
-            result_label.pack()
 
         elif selected_item == "option put":
             put_window = Toplevel(fenetre)
+            put_window.geometry("400x300")
             put_window.title("Option Put Pricing Parameters")
             entry_S = create_labeled_entry(put_window, "Stock price (S):")
             entry_K = create_labeled_entry(put_window, "Strike price (K):")
@@ -105,28 +107,33 @@ def on_select(event):
             entry_T = create_labeled_entry(put_window, "Time to maturity (T):")
             entry_sigma = create_labeled_entry(put_window, "Volatility (sigma):")
 
+            result_label = Label(put_window, text="")
+            result_label.pack()
+
             def calculate_put_price():
                 S = float(entry_S.get())
                 K = float(entry_K.get())
                 r = float(entry_r.get())
                 T = float(entry_T.get())
                 sigma = float(entry_sigma.get())
-                price = put_pricer(S, K, r, T, sigma)
+                price = put_pricer(S, K, r, T, sigma, "put")
                 result_label.config(text=f"Option Put Price: {price:.2f}")
 
             calculate_button = Button(put_window, text="Calculate", command=calculate_put_price)
             calculate_button.pack()
-            result_label = Label(put_window, text="")
-            result_label.pack()
 
         elif selected_item == "obligation":
             bond_window = Toplevel(fenetre)
+            bond_window.geometry("400x300")
             bond_window.title("Bond Pricing Parameters")
             entry_m = create_labeled_entry(bond_window, "Number of payments per year (m):")
             entry_t = create_labeled_entry(bond_window, "Total years to maturity (t):")
             entry_ytm = create_labeled_entry(bond_window, "Yield to maturity (ytm):")
             entry_bond_fv = create_labeled_entry(bond_window, "Bond face value (FV):")
             entry_coupon_r = create_labeled_entry(bond_window, "Coupon rate (coupon_r):")
+
+            result_label = Label(bond_window, text="")
+            result_label.pack()
 
             def calculate_bond_price():
                 m = float(entry_m.get())
@@ -139,12 +146,9 @@ def on_select(event):
 
             calculate_button = Button(bond_window, text="Calculate", command=calculate_bond_price)
             calculate_button.pack()
-            result_label = Label(bond_window, text="")
-            result_label.pack()
-
-
 
 # Bind the selection event
 liste.bind("<<ListboxSelect>>", on_select)
 
 fenetre.mainloop()
+
