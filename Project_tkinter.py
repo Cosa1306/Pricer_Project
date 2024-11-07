@@ -36,11 +36,6 @@ def bond_pricer(m, t, ytm, bond_fv, coupon_r):
   bond_price=((bond_fv*coupon_r/m*(1-(1+ytm/m)**(-m*t)))/(ytm/m))+bond_fv*(1+(ytm/m))**(-m*t)
   return bond_price
 
-# ratios
-def sharp_ratio(r,r_free,sigma):
-  sr=(r-r_free)/sigma
-  return sr
-
 # duration
 def duration(d,c,m,y,n,t):
   numerator = sum([(t*c)/((1+y)**t)+((n*m)/(1+y)**n)])
@@ -59,8 +54,7 @@ liste = Listbox(fenetre)
 liste.insert(1, "option call")
 liste.insert(2, "option put")
 liste.insert(3, "obligation")
-liste.insert(4, "sharp_ratio")
-liste.insert(5, "duration")
+liste.insert(4, "duration")
 liste.pack()
 
 
@@ -148,14 +142,6 @@ def on_select(event):
             result_label = Label(bond_window, text="")
             result_label.pack()
 
-        elif selected_item == "sharp_ratio":
-            bond_window = Toplevel(fenetre)
-            bond_window.title("Sharp ratio calculator")
-            entry_m = create_labeled_entry(bond_window, "Number of payments per year (m):")
-            entry_t = create_labeled_entry(bond_window, "Total years to maturity (t):")
-            entry_ytm = create_labeled_entry(bond_window, "Yield to maturity (ytm):")
-            entry_bond_fv = create_labeled_entry(bond_window, "Bond face value (FV):")
-            entry_coupon_r = create_labeled_entry(bond_window, "Coupon rate (coupon_r):")
 
 
 # Bind the selection event
