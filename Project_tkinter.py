@@ -9,53 +9,38 @@ Created on Tue Nov  5 09:35:32 2024
 from tkinter import *
 import numpy as np
 from scipy.stats import norm
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-
-# Definition formule Black & Scholes
-def call_pricer(stock_price, strike_price, r_free, maturity, sigma, option_name):
+# Black & Scholes formula definition
+def call_pricer(stock_price, strike_price, r_free, maturity, sigma):
     d1 = (np.log(stock_price / strike_price) + (r_free + (sigma**2) / 2) * maturity) / (sigma * np.sqrt(maturity))
     d2 = d1 - sigma * np.sqrt(maturity)
-
     N1 = norm.cdf(d1)
     N2 = norm.cdf(d2)
     price = stock_price * N1 - strike_price * np.exp(-r_free * maturity) * N2
     return price
 
-
-def put_pricer(stock_price, strike_price, r_free, maturity, sigma, option_name):
+def put_pricer(stock_price, strike_price, r_free, maturity, sigma):
     d1 = (np.log(stock_price / strike_price) + (r_free + (sigma**2) / 2) * maturity) / (sigma * np.sqrt(maturity))
     d2 = d1 - sigma * np.sqrt(maturity)
-
     N1 = norm.cdf(d1)
     N2 = norm.cdf(d2)
-    price = price = strike_price * np.exp(-r_free * maturity) * (1 - N2) - stock_price * (1 - N1)
+    price = strike_price * np.exp(-r_free * maturity) * (1 - N2) - stock_price * (1 - N1)
     return price
-
-# Definition bond pricer
-def bond_pricer(m, t, ytm, bond_fv, coupon_r):
-  bond_price=((bond_fv*coupon_r/m*(1-(1+ytm/m)**(-m*t)))/(ytm/m))+bond_fv*(1+(ytm/m))**(-m*t)
-  return bond_price
-
-# duration
-def duration(d,c,m,y,n,t):
-  numerator = sum([(t*c)/((1+y)**t)+((n*m)/(1+y)**n)])
-  denominator = sum([(c/(1+y)**t)+m/(1+y)**n])
-  return numerator/denominator
 
 # Main window
 fenetre = Tk()
 fenetre.title("Pricer")
-fenetre.geometry("400X300")
+fenetre.geometry("400x300")
 
-label = Label(fenetre, text="Bonjour! Que souhaitez-vous calculer?")
+label = Label(fenetre, text="Hello! What would you like to calculate?")
 label.pack()
 
 # List of tools
 liste = Listbox(fenetre)
 liste.insert(1, "option call")
 liste.insert(2, "option put")
-liste.insert(3, "obligation")
-liste.insert(4, "duration")
 liste.pack()
 
 # Helper function to create labeled entry
@@ -68,87 +53,230 @@ def create_labeled_entry(window, text):
 
 # Function to handle selection and open the respective input window
 def on_select(event):
-    selected_index = liste.curselection()
-    if selected_index:
-        selected_item = liste.get(selected_index)
+    selection = event.widget.get(event.widget.curselection())
+    if selection == "option call":
+        create_option_input_window("call")
+    elif selection == "option put":
+        create_option_input_window("put")
 
-        if selected_item == "option call":
-            call_window = Toplevel(fenetre)
-            call_window.geometry("400x300")
-            call_window.title("Option Call Pricing Parameters")
-            entry_S = create_labeled_entry(call_window, "Stock price (S):")
-            entry_K = create_labeled_entry(call_window, "Strike price (K):")
-            entry_r = create_labeled_entry(call_window, "Risk-free rate (r):")
-            entry_T = create_labeled_entry(call_window, "Time to maturity (T):")
-            entry_sigma = create_labeled_entry(call_window, "Volatility (sigma):")
+def create_option_input_window(option_type):
+    window = Toplevel(fenetre)
+    window.geometry("400x300")
+    window.title(f"{option_type.capitalize()} Option Pricing Parameters")
+    entry_S = create_labeled_entry(window, "Stock price (S):")
+    entry_K = create_labeled_entry(window, "Strike price (K):")
+    entry_r = create_labeled_entry(window, "Risk-free rate (r):")
+    entry_T = create_labeled_entry(window, "Time to maturity (T):")
+    entry_sigma = create_labeled_entry(window, "Volatility (sigma):")
+    result_label = Label(window, text="")
+    result_label.pack()
 
-            result_label = Label(call_window, text="")
-            result_label.pack()
+    # Checkboxes for Greeks
+    delta_var = BooleanVar()
+    gamma_var = BooleanVar()
+    vega_var = BooleanVar()
+    theta_var = BooleanVar()
+    rho_var = BooleanVar()
 
-            def calculate_call_price():
-                S = float(entry_S.get())
-                K = float(entry_K.get())
-                r = float(entry_r.get())
-                T = float(entry_T.get())
-                sigma = float(entry_sigma.get())
-                price = call_pricer(S, K, r, T, sigma, "call")
-                result_label.config(text=f"Option Call Price: {price:.2f}")
+    create_checkbox(window, "Delta", delta_var)
+    create_checkbox(window, "Gamma", gamma_var)
+    create_checkbox(window, "Vega", vega_var)
+    create_checkbox(window, "Theta", theta_var)
+    create_checkbox(window, "Rho", rho_var)
 
-            calculate_button = Button(call_window, text="Calculate", command=calculate_call_price)
-            calculate_button.pack()
+    if option_type == "call":
+        calculate_button = Button(window, text="Calculate", command=lambda: calculate_price(entry_S, entry_K, entry_r, entry_T, entry_sigma, result_label, call_pricer, delta_var, gamma_var, vega_var, theta_var, rho_var, window))
+    else:
+        calculate_button = Button(window, text="Calculate", command=lambda: calculate_price(entry_S, entry_K, entry_r, entry_T, entry_sigma, result_label, put_pricer, delta_var, gamma_var, vega_var, theta_var, rho_var, window))
+    calculate_button.pack()
 
-        elif selected_item == "option put":
-            put_window = Toplevel(fenetre)
-            put_window.geometry("400x300")
-            put_window.title("Option Put Pricing Parameters")
-            entry_S = create_labeled_entry(put_window, "Stock price (S):")
-            entry_K = create_labeled_entry(put_window, "Strike price (K):")
-            entry_r = create_labeled_entry(put_window, "Risk-free rate (r):")
-            entry_T = create_labeled_entry(put_window, "Time to maturity (T):")
-            entry_sigma = create_labeled_entry(put_window, "Volatility (sigma):")
+def calculate_price(entry_S, entry_K, entry_r, entry_T, entry_sigma, result_label, pricer_func, delta_var, gamma_var, vega_var, theta_var, rho_var, window):
+    try:
+        S = float(entry_S.get())
+        K = float(entry_K.get())
+        r = float(entry_r.get())
+        T = float(entry_T.get())
+        sigma = float(entry_sigma.get())
+        if S <= 0 or K <= 0 or r < 0 or T <= 0 or sigma <= 0:
+            raise ValueError("Input values must be positive numbers")
+        price = pricer_func(S, K, r, T, sigma)
+        result_label.config(text=f"Option Price: {price:.2f}")
 
-            result_label = Label(put_window, text="")
-            result_label.pack()
+        # Calculate Greeks if checkboxes are selected
+        if delta_var.get():
+            delta = calculate_delta(S, K, r, T, sigma, pricer_func)
+            result_label.config(text=result_label.cget("text") + f"\nDelta: {delta:.4f}")
+        if gamma_var.get():
+            gamma = calculate_gamma(S, K, r, T, sigma)
+            result_label.config(text=result_label.cget("text") + f"\nGamma: {gamma:.4f}")
+        if vega_var.get():
+            vega = calculate_vega(S, K, r, T, sigma)
+            result_label.config(text=result_label.cget("text") + f"\nVega: {vega:.4f}")
+        if theta_var.get():
+            theta = calculate_theta(S, K, r, T, sigma, pricer_func)
+            result_label.config(text=result_label.cget("text") + f"\nTheta: {theta:.4f}")
+        if rho_var.get():
+            rho = calculate_rho(S, K, r, T, sigma, pricer_func)
+            result_label.config(text=result_label.cget("text") + f"\nRho: {rho:.4f}")
 
-            def calculate_put_price():
-                S = float(entry_S.get())
-                K = float(entry_K.get())
-                r = float(entry_r.get())
-                T = float(entry_T.get())
-                sigma = float(entry_sigma.get())
-                price = put_pricer(S, K, r, T, sigma, "put")
-                result_label.config(text=f"Option Put Price: {price:.2f}")
+        # Add a button to show the plot if it doesn't already exist
+        if not hasattr(window, 'plot_button'):
+            plot_button = Button(window, text="Show Greeks Plot", command=lambda: show_greeks_plot(S, K, r, T, sigma, pricer_func, delta_var, gamma_var, vega_var, theta_var, rho_var))
+            plot_button.pack()
+            window.plot_button = plot_button  # Store the button in the window object
 
-            calculate_button = Button(put_window, text="Calculate", command=calculate_put_price)
-            calculate_button.pack()
+    except ValueError as e:
+        result_label.config(text=str(e))
 
-        elif selected_item == "obligation":
-            bond_window = Toplevel(fenetre)
-            bond_window.geometry("400x300")
-            bond_window.title("Bond Pricing Parameters")
-            entry_m = create_labeled_entry(bond_window, "Number of payments per year (m):")
-            entry_t = create_labeled_entry(bond_window, "Total years to maturity (t):")
-            entry_ytm = create_labeled_entry(bond_window, "Yield to maturity (ytm):")
-            entry_bond_fv = create_labeled_entry(bond_window, "Bond face value (FV):")
-            entry_coupon_r = create_labeled_entry(bond_window, "Coupon rate (coupon_r):")
+def create_checkbox(window, text, var):
+    checkbox = Checkbutton(window, text=text, variable=var)
+    checkbox.pack()
 
-            result_label = Label(bond_window, text="")
-            result_label.pack()
+def calculate_delta(S, K, r, T, sigma, pricer_func):
+    d1 = (np.log(S / K) + (r + (sigma**2) / 2) * T) / (sigma * np.sqrt(T))
+    if pricer_func == call_pricer:
+        return norm.cdf(d1)
+    else:
+        return norm.cdf(d1) - 1
 
-            def calculate_bond_price():
-                m = float(entry_m.get())
-                t = float(entry_t.get())
-                ytm = float(entry_ytm.get())
-                bond_fv = float(entry_bond_fv.get())
-                coupon_r = float(entry_coupon_r.get())
-                price = bond_pricer(m, t, ytm, bond_fv, coupon_r)
-                result_label.config(text=f"Bond Price: {price:.2f}")
+def calculate_gamma(S, K, r, T, sigma):
+    d1 = (np.log(S / K) + (r + (sigma**2) / 2) * T) / (sigma * np.sqrt(T))
+    return norm.pdf(d1) / (S * sigma * np.sqrt(T))
 
-            calculate_button = Button(bond_window, text="Calculate", command=calculate_bond_price)
-            calculate_button.pack()
+def calculate_vega(S, K, r, T, sigma):
+    d1 = (np.log(S / K) + (r + (sigma**2) / 2) * T) / (sigma * np.sqrt(T))
+    return S * norm.pdf(d1) * np.sqrt(T)
+
+def calculate_theta(S, K, r, T, sigma, pricer_func):
+    d1 = (np.log(S / K) + (r + (sigma**2) / 2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    if pricer_func == call_pricer:
+        return -(S * norm.pdf(d1) * sigma) / (2 * np.sqrt(T)) - r * K * np.exp(-r * T) * norm.cdf(d2)
+    else:
+        return -(S * norm.pdf(d1) * sigma) / (2 * np.sqrt(T)) + r * K * np.exp(-r * T) * norm.cdf(-d2)
+
+def calculate_rho(S, K, r, T, sigma, pricer_func):
+    d1 = (np.log(S / K) + (r + (sigma**2) / 2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    if pricer_func == call_pricer:
+        return K * T * np.exp(-r * T) * norm.cdf(d2)
+    else:
+        return -K * T * np.exp(-r * T) * norm.cdf(-d2)
+
+def show_greeks_plot(S, K, r, T, sigma, pricer_func, delta_var, gamma_var, vega_var, theta_var, rho_var):
+    plot_window = Toplevel(fenetre)
+    plot_window.title("Greeks Plot")
+
+    canvas = Canvas(plot_window)
+    scrollbar = Scrollbar(plot_window, orient="vertical", command=canvas.yview)
+    scrollable_frame = Frame(canvas)
+
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(
+            scrollregion=canvas.bbox("all")
+        )
+    )
+
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+
+    row, col = 0, 0
+
+    if delta_var.get():
+        stock_prices = np.linspace(S * 0.5, S * 1.5, 100)
+        delta_values = [calculate_delta(S, K, r, T, sigma, pricer_func) for S in stock_prices]
+        fig, ax = plt.subplots()
+        ax.plot(stock_prices, delta_values, label='Delta', color='blue')
+        ax.set_xlabel('Price of the underlying asset (S)', fontsize=14)
+        ax.set_ylabel('Delta (∂V/∂S)', fontsize=14)
+        ax.legend(fontsize=14)
+        ax.grid(True)
+        plt.subplots_adjust(left=0.15, right=0.95, top=0.9, bottom=0.2)
+        canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
+        canvas.draw()
+        canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
+        col += 1
+        if col > 2:
+            col = 0
+            row += 1
+
+    if gamma_var.get():
+        stock_prices = np.linspace(S * 0.5, S * 1.5, 100)
+        gamma_values = [calculate_gamma(S, K, r, T, sigma) for S in stock_prices]
+        fig, ax = plt.subplots()
+        ax.plot(stock_prices, gamma_values, label='Gamma', color='green')
+        ax.set_xlabel('Price of the underlying asset (S)', fontsize=14)
+        ax.set_ylabel('Gamma (∂²V/∂S²)', fontsize=14)
+        ax.legend(fontsize=14)
+        ax.grid(True)
+        plt.subplots_adjust(left=0.15, right=0.95, top=0.9, bottom=0.2)
+        canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
+        canvas.draw()
+        canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
+        col += 1
+        if col > 2:
+            col = 0
+            row += 1
+
+    if vega_var.get():
+        volatilities = np.linspace(sigma * 0.5, sigma * 1.5, 100)
+        vega_values = [calculate_vega(S, K, r, T, sigma) for sigma in volatilities]
+        fig, ax = plt.subplots()
+        ax.plot(volatilities, vega_values, label='Vega', color='red')
+        ax.set_xlabel('Implied volatility (σ)', fontsize=14)
+        ax.set_ylabel('Vega (∂V/∂σ)', fontsize=14)
+        ax.legend(fontsize=14)
+        ax.grid(True)
+        plt.subplots_adjust(left=0.15, right=0.95, top=0.9, bottom=0.2)
+        canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
+        canvas.draw()
+        canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
+        col += 1
+        if col > 2:
+            col = 0
+            row += 1
+
+    if theta_var.get():
+        times = np.linspace(T * 0.5, T * 1.5, 100)
+        theta_values = [calculate_theta(S, K, r, T, sigma, pricer_func) for T in times]
+        fig, ax = plt.subplots()
+        ax.plot(times, theta_values, label='Theta', color='purple')
+        ax.set_xlabel('Time to expiration (T)', fontsize=14)
+        ax.set_ylabel('Theta (∂V/∂T)', fontsize=14)
+        ax.legend(fontsize=14)
+        ax.grid(True)
+        plt.subplots_adjust(left=0.15, right=0.95, top=0.9, bottom=0.2)
+        canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
+        canvas.draw()
+        canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
+        col += 1
+        if col > 2:
+            col = 0
+            row += 1
+
+    if rho_var.get():
+        interest_rates = np.linspace(r * 0.5, r * 1.5, 100)
+        rho_values = [calculate_rho(S, K, r, T, sigma, pricer_func) for r in interest_rates]
+        fig, ax = plt.subplots()
+        ax.plot(interest_rates, rho_values, label='Rho', color='orange')
+        ax.set_xlabel('Interest rate (r)', fontsize=14)
+        ax.set_ylabel('Rho (∂V/∂r)', fontsize=14)
+        ax.legend(fontsize=14)
+        ax.grid(True)
+        plt.subplots_adjust(left=0.15, right=0.95, top=0.9, bottom=0.2)
+        canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
+        canvas.draw()
+        canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
+        col += 1
+        if col > 2:
+            col = 0
+            row += 1
 
 # Bind the selection event
 liste.bind("<<ListboxSelect>>", on_select)
 
 fenetre.mainloop()
-
