@@ -3,7 +3,7 @@
 """
 Created on Tue Nov  5 09:35:32 2024
 
-@author: Sonny Genovese et Thomas-Victor Coll
+@author: Sonny Genovese & Thomas-Victor Coll
 """
 
 from tkinter import *
