@@ -32,7 +32,8 @@ def put_pricer(stock_price, strike_price, r_free, maturity, sigma):
 # Main window
 fenetre = Tk()
 fenetre.title("Pricer")
-fenetre.geometry("400x300")
+fenetre.geometry("647x400")
+
 
 label = Label(fenetre, text="Hello! What would you like to calculate?")
 label.pack()
@@ -61,7 +62,7 @@ def on_select(event):
 
 def create_option_input_window(option_type):
     window = Toplevel(fenetre)
-    window.geometry("400x300")
+    window.geometry("809x550")
     window.title(f"{option_type.capitalize()} Option Pricing Parameters")
     entry_S = create_labeled_entry(window, "Stock price (S):")
     entry_K = create_labeled_entry(window, "Strike price (K):")
@@ -186,16 +187,18 @@ def show_greeks_plot(S, K, r, T, sigma, pricer_func, delta_var, gamma_var, vega_
 
     row, col = 0, 0
 
+    plot_size = (4, 3)
+
     if delta_var.get():
         stock_prices = np.linspace(S * 0.5, S * 1.5, 100)
         delta_values = [calculate_delta(S, K, r, T, sigma, pricer_func) for S in stock_prices]
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=plot_size)
         ax.plot(stock_prices, delta_values, label='Delta', color='blue')
         ax.set_xlabel('Price of the underlying asset (S)', fontsize=14)
         ax.set_ylabel('Delta (∂V/∂S)', fontsize=14)
-        ax.legend(fontsize=14)
+        ax.legend()
         ax.grid(True)
-        plt.subplots_adjust(left=0.15, right=0.95, top=0.9, bottom=0.2)
+        plt.subplots_adjust(left=0.2, right=0.9, top=0.85, bottom=0.25)
         canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
         canvas.draw()
         canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
@@ -207,13 +210,13 @@ def show_greeks_plot(S, K, r, T, sigma, pricer_func, delta_var, gamma_var, vega_
     if gamma_var.get():
         stock_prices = np.linspace(S * 0.5, S * 1.5, 100)
         gamma_values = [calculate_gamma(S, K, r, T, sigma) for S in stock_prices]
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=plot_size)
         ax.plot(stock_prices, gamma_values, label='Gamma', color='green')
         ax.set_xlabel('Price of the underlying asset (S)', fontsize=14)
         ax.set_ylabel('Gamma (∂²V/∂S²)', fontsize=14)
-        ax.legend(fontsize=14)
+        ax.legend()
         ax.grid(True)
-        plt.subplots_adjust(left=0.15, right=0.95, top=0.9, bottom=0.2)
+        plt.subplots_adjust(left=0.2, right=0.9, top=0.85, bottom=0.25)
         canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
         canvas.draw()
         canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
@@ -225,13 +228,13 @@ def show_greeks_plot(S, K, r, T, sigma, pricer_func, delta_var, gamma_var, vega_
     if vega_var.get():
         volatilities = np.linspace(sigma * 0.5, sigma * 1.5, 100)
         vega_values = [calculate_vega(S, K, r, T, sigma) for sigma in volatilities]
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=plot_size)
         ax.plot(volatilities, vega_values, label='Vega', color='red')
         ax.set_xlabel('Implied volatility (σ)', fontsize=14)
         ax.set_ylabel('Vega (∂V/∂σ)', fontsize=14)
-        ax.legend(fontsize=14)
+        ax.legend()
         ax.grid(True)
-        plt.subplots_adjust(left=0.15, right=0.95, top=0.9, bottom=0.2)
+        plt.subplots_adjust(left=0.2, right=0.9, top=0.85, bottom=0.25)
         canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
         canvas.draw()
         canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
@@ -243,13 +246,13 @@ def show_greeks_plot(S, K, r, T, sigma, pricer_func, delta_var, gamma_var, vega_
     if theta_var.get():
         times = np.linspace(T * 0.5, T * 1.5, 100)
         theta_values = [calculate_theta(S, K, r, T, sigma, pricer_func) for T in times]
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=plot_size)
         ax.plot(times, theta_values, label='Theta', color='purple')
         ax.set_xlabel('Time to expiration (T)', fontsize=14)
         ax.set_ylabel('Theta (∂V/∂T)', fontsize=14)
-        ax.legend(fontsize=14)
+        ax.legend()
         ax.grid(True)
-        plt.subplots_adjust(left=0.15, right=0.95, top=0.9, bottom=0.2)
+        plt.subplots_adjust(left=0.2, right=0.9, top=0.85, bottom=0.25)
         canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
         canvas.draw()
         canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
@@ -261,13 +264,13 @@ def show_greeks_plot(S, K, r, T, sigma, pricer_func, delta_var, gamma_var, vega_
     if rho_var.get():
         interest_rates = np.linspace(r * 0.5, r * 1.5, 100)
         rho_values = [calculate_rho(S, K, r, T, sigma, pricer_func) for r in interest_rates]
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=plot_size)
         ax.plot(interest_rates, rho_values, label='Rho', color='orange')
         ax.set_xlabel('Interest rate (r)', fontsize=14)
         ax.set_ylabel('Rho (∂V/∂r)', fontsize=14)
-        ax.legend(fontsize=14)
+        ax.legend()
         ax.grid(True)
-        plt.subplots_adjust(left=0.15, right=0.95, top=0.9, bottom=0.2)
+        plt.subplots_adjust(left=0.2, right=0.9, top=0.85, bottom=0.25)
         canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
         canvas.draw()
         canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
