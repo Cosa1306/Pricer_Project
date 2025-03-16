@@ -6,280 +6,357 @@ Created on Tue Nov  5 09:35:32 2024
 @author: Sonny Genovese & Thomas-Victor Coll
 """
 
-from tkinter import *
+import micropip
+await micropip.install("scipy")
+
+
+import streamlit as st
 import numpy as np
 from scipy.stats import norm
+from scipy.optimize import brentq
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-# Black & Scholes formula definition
-def call_pricer(stock_price, strike_price, r_free, maturity, sigma):
-    d1 = (np.log(stock_price / strike_price) + (r_free + (sigma**2) / 2) * maturity) / (sigma * np.sqrt(maturity))
+
+# Black & Scholes formula definition (European_Options)
+def call_pricer(stock_price, strike_price, r_free, maturity, sigma, dividend_yield):
+    adjusted_stock_price = stock_price * np.exp(-dividend_yield * maturity)
+    d1 = (np.log(adjusted_stock_price / strike_price) + (r_free + (sigma**2) / 2) * maturity) / (sigma * np.sqrt(maturity))
     d2 = d1 - sigma * np.sqrt(maturity)
     N1 = norm.cdf(d1)
     N2 = norm.cdf(d2)
-    price = stock_price * N1 - strike_price * np.exp(-r_free * maturity) * N2
+    price = adjusted_stock_price * N1 - strike_price * np.exp(-r_free * maturity) * N2
     return price
 
-def put_pricer(stock_price, strike_price, r_free, maturity, sigma):
-    d1 = (np.log(stock_price / strike_price) + (r_free + (sigma**2) / 2) * maturity) / (sigma * np.sqrt(maturity))
+def put_pricer(stock_price, strike_price, r_free, maturity, sigma, dividend_yield):
+    adjusted_stock_price = stock_price * np.exp(-dividend_yield * maturity)
+    d1 = (np.log(adjusted_stock_price / strike_price) + (r_free + (sigma**2) / 2) * maturity) / (sigma * np.sqrt(maturity))
     d2 = d1 - sigma * np.sqrt(maturity)
     N1 = norm.cdf(d1)
     N2 = norm.cdf(d2)
-    price = strike_price * np.exp(-r_free * maturity) * (1 - N2) - stock_price * (1 - N1)
+    price = strike_price * np.exp(-r_free * maturity) * (1 - N2) - adjusted_stock_price * (1 - N1)
     return price
 
-# Main window
-fenetre = Tk()
-fenetre.title("Pricer")
-fenetre.geometry("647x400")
+steps = 200
 
+# Binomial Tree formula definition (American_Options)
+def american_call_pricer(stock_price, strike_price, r_free, maturity, sigma, steps, dividend_yield):
+    dt = maturity/steps
+    upper = np.exp(sigma*np.sqrt(dt))
+    down = 1/upper
+    probability = (np.exp((r_free - dividend_yield) * dt) - down) / (upper - down)
 
-label = Label(fenetre, text="Hello! What would you like to calculate?")
-label.pack()
+    asset_prices = np.zeros((steps + 1, steps + 1))
+    for i in range(steps + 1):
+        for j in range(i + 1):
+            asset_prices[j, i] = stock_price * (upper ** (i - j)) * (down ** j)
+    option_values = np.maximum(asset_prices[:, steps] - strike_price, 0)
+    for step in range(steps - 1, -1, -1):
+        for i in range(step + 1):
+            hold_value = np.exp(-r_free * dt) * (probability * option_values[i] + (1 - probability) * option_values[i + 1])
+            exercise_value = max(asset_prices[i, step] - strike_price, 0)
+            option_values[i] = max(hold_value, exercise_value)
+    return option_values[0]
 
-# List of tools
-liste = Listbox(fenetre)
-liste.insert(1, "option call")
-liste.insert(2, "option put")
-liste.pack()
+def american_put_pricer(stock_price, strike_price, r_free, maturity, sigma, steps, dividend_yield):
+    dt = maturity/steps
+    upper = np.exp(sigma*np.sqrt(dt))
+    down = 1/upper
+    probability = (np.exp((r_free - dividend_yield) * dt) - down) / (upper - down)
 
-# Helper function to create labeled entry
-def create_labeled_entry(window, text):
-    label = Label(window, text=text)
-    label.pack()
-    entry = Entry(window)
-    entry.pack()
-    return entry
+    asset_prices = np.zeros((steps + 1, steps + 1))
+    for i in range(steps + 1):
+        for j in range(i + 1):
+            asset_prices[j, i] = stock_price * (upper ** (i - j)) * (down ** j)
+    option_values = np.maximum(strike_price - asset_prices[:, steps], 0)
+    for step in range(steps - 1, -1, -1):
+        for i in range(step + 1):
+            hold_value = np.exp(-r_free * dt) * (probability * option_values[i] + (1 - probability) * option_values[i + 1])
+            exercise_value = asset_prices[i] - strike_price
+            exercise_value = max(strike_price - asset_prices[i, step], 0)
+            option_values[i] = max(hold_value, exercise_value)
+    return option_values[0]
 
-# Function to handle selection and open the respective input window
-def on_select(event):
-    selection = event.widget.get(event.widget.curselection())
-    if selection == "option call":
-        create_option_input_window("call")
-    elif selection == "option put":
-        create_option_input_window("put")
+# Asian option - Monte-Carlo Simulation 
+def asian_option_pricer(stock_price, r_free, sigma, maturity, num_step=50, num_simulation=10000):
+    np.random.seed(42)
+    dt = maturity / num_step
 
-def create_option_input_window(option_type):
-    window = Toplevel(fenetre)
-    window.geometry("809x550")
-    window.title(f"{option_type.capitalize()} Option Pricing Parameters")
-    entry_S = create_labeled_entry(window, "Stock price (S):")
-    entry_K = create_labeled_entry(window, "Strike price (K):")
-    entry_r = create_labeled_entry(window, "Risk-free rate (r):")
-    entry_T = create_labeled_entry(window, "Time to maturity (T):")
-    entry_sigma = create_labeled_entry(window, "Volatility (sigma):")
-    result_label = Label(window, text="")
-    result_label.pack()
+    assert num_step > 1, "Le nombre de pas de temps doit être supérieur à 1"
+    assert num_simulation > 100, "Le nombre de simulation doit être suffisamment grand"
 
-    # Checkboxes for Greeks
-    delta_var = BooleanVar()
-    gamma_var = BooleanVar()
-    vega_var = BooleanVar()
-    theta_var = BooleanVar()
-    rho_var = BooleanVar()
+    S = np.zeros((num_simulation, num_step + 1))
+    S[:, 0] = stock_price
 
-    create_checkbox(window, "Delta", delta_var)
-    create_checkbox(window, "Gamma", gamma_var)
-    create_checkbox(window, "Vega", vega_var)
-    create_checkbox(window, "Theta", theta_var)
-    create_checkbox(window, "Rho", rho_var)
+    for t in range(1, num_step + 1):
+        z = np.random.standard_normal(num_simulation)
+        S[:, t] = S[:, t-1]* np.exp((r_free - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * z)
 
-    if option_type == "call":
-        calculate_button = Button(window, text="Calculate", command=lambda: calculate_price(entry_S, entry_K, entry_r, entry_T, entry_sigma, result_label, call_pricer, delta_var, gamma_var, vega_var, theta_var, rho_var, window))
-    else:
-        calculate_button = Button(window, text="Calculate", command=lambda: calculate_price(entry_S, entry_K, entry_r, entry_T, entry_sigma, result_label, put_pricer, delta_var, gamma_var, vega_var, theta_var, rho_var, window))
-    calculate_button.pack()
+    # Calcul de la moyenne arithmétique des prix simulés
+    S_avg = np.mean(S[:, 1:], axis=1) # On ignore S[:,0] car c'est le prix initial
+    return S_avg, S # Retourne la moyenne arithmétique du sous-jacent
 
-def calculate_price(entry_S, entry_K, entry_r, entry_T, entry_sigma, result_label, pricer_func, delta_var, gamma_var, vega_var, theta_var, rho_var, window):
+def asian_call_pricer (strike_price, S_avg, r_free, maturity, S):
+    payoff = np.maximum(S_avg - strike_price, 0)
+    asian_call_price = np.exp(-r_free * maturity) * np.mean(payoff)
+
+    fig, ax = plt.subplots()
+    ax.plot(S[:15].T)  # Afficher 15 trajectoires aléatoires
+    ax.set_title("Simulations de prix pour l'option asiatique")
+    ax.set_xlabel("Temps (étapes de la simulation)")
+    ax.set_ylabel("Prix du sous-jacent")
+    st.pyplot(fig)
+
+    return asian_call_price
+
+def asian_put_pricer(strike_price, S_avg, r_free, maturity, S):
+    payoff = np.maximum(strike_price - S_avg , 0)
+    asian_put_price = np.exp(-r_free * maturity) * np.mean(payoff)
+
+    fig, ax = plt.subplots()
+    ax.plot(S[:15].T)  # Afficher 15 trajectoires aléatoires
+    ax.set_title("Simulations de prix pour l'option asiatique")
+    ax.set_xlabel("Temps (étapes de la simulation)")
+    ax.set_ylabel("Prix du sous-jacent")
+    st.pyplot(fig)
+
+    return asian_put_price
+
+#Implied Vol 
+def implied_volatility(market_price, stock_price, strike_price, r_free, maturity, dividend_yield, option_type, option_style, steps=None):
+    def objective_function(sigma):
+        if option_style == "European option":
+            if option_type == "CALL": 
+                return call_pricer(stock_price, strike_price, r_free, maturity, sigma, dividend_yield) - market_price
+            else:
+                return put_pricer(stock_price, strike_price, r_free, maturity, sigma, dividend_yield) - market_price
+        else:
+            if steps is None:
+                raise ValueError("Le nombre de pas (steps) est requis pour une option Américaine.")
+            if steps < 1:
+                raise ValueError("Le nombre de pas (steps) doit être supérieur à 0 pour les options Américaines.")
+            if option_type == "CALL":
+                return american_call_pricer(stock_price, strike_price, r_free, maturity, sigma, steps, dividend_yield) - market_price
+            else:
+                return american_put_pricer(stock_price, strike_price, r_free, maturity, sigma, steps, dividend_yield) - market_price
+
     try:
-        S = float(entry_S.get())
-        K = float(entry_K.get())
-        r = float(entry_r.get())
-        T = float(entry_T.get())
-        sigma = float(entry_sigma.get())
-        if S <= 0 or K <= 0 or r < 0 or T <= 0 or sigma <= 0:
-            raise ValueError("Input values must be positive numbers")
-        price = pricer_func(S, K, r, T, sigma)
-        result_label.config(text=f"Option Price: {price:.2f}")
+        return brentq(objective_function, 0.01, 3.0)  # Recherche de σ entre 1% et 300%
+    except ValueError:
+        return None  # Impossible de trouver une solution
 
-        # Calculate Greeks if checkboxes are selected
-        if delta_var.get():
-            delta = calculate_delta(S, K, r, T, sigma, pricer_func)
-            result_label.config(text=result_label.cget("text") + f"\nDelta: {delta:.4f}")
-        if gamma_var.get():
-            gamma = calculate_gamma(S, K, r, T, sigma)
-            result_label.config(text=result_label.cget("text") + f"\nGamma: {gamma:.4f}")
-        if vega_var.get():
-            vega = calculate_vega(S, K, r, T, sigma)
-            result_label.config(text=result_label.cget("text") + f"\nVega: {vega:.4f}")
-        if theta_var.get():
-            theta = calculate_theta(S, K, r, T, sigma, pricer_func)
-            result_label.config(text=result_label.cget("text") + f"\nTheta: {theta:.4f}")
-        if rho_var.get():
-            rho = calculate_rho(S, K, r, T, sigma, pricer_func)
-            result_label.config(text=result_label.cget("text") + f"\nRho: {rho:.4f}")
 
-        # Add a button to show the plot if it doesn't already exist
-        if not hasattr(window, 'plot_button'):
-            plot_button = Button(window, text="Show Greeks Plot", command=lambda: show_greeks_plot(S, K, r, T, sigma, pricer_func, delta_var, gamma_var, vega_var, theta_var, rho_var))
-            plot_button.pack()
-            window.plot_button = plot_button  # Store the button in the window object
-
-    except ValueError as e:
-        result_label.config(text=str(e))
-
-def create_checkbox(window, text, var):
-    checkbox = Checkbutton(window, text=text, variable=var)
-    checkbox.pack()
-
-def calculate_delta(S, K, r, T, sigma, pricer_func):
-    d1 = (np.log(S / K) + (r + (sigma**2) / 2) * T) / (sigma * np.sqrt(T))
-    if pricer_func == call_pricer:
+# Greeks 
+def calculate_Delta (stock_price, strike_price, r_free, maturity, sigma, option_type):
+    d1 = (np.log(stock_price / strike_price) + (r_free + (sigma**2) / 2) * maturity) / (sigma * np.sqrt(maturity))
+    if option_type == "CALL" : 
         return norm.cdf(d1)
+    else : 
+        return norm.cdf(d1)-1
+
+def calculate_Gamma(stock_price, strike_price, r_free, maturity, sigma):
+    d1 = (np.log(stock_price / strike_price) + (r_free+ (sigma**2) / 2) * maturity) / (sigma * np.sqrt(maturity))
+    gamma = norm.pdf(d1) / (stock_price * sigma * np.sqrt(maturity))
+    return gamma
+
+def calculate_Vega(stock_price, strike_price, r_free, maturity, sigma):
+    d1 = (np.log(stock_price/ strike_price) + (r_free + (sigma**2) / 2) * maturity) / (sigma * np.sqrt(maturity))
+    vega = stock_price * norm.pdf(d1) * np.sqrt(maturity)
+    return vega
+
+def calculate_Theta(stock_price, strike_price, r_free, maturity, sigma):
+    d1 = (np.log(stock_price / strike_price) + (r_free + (sigma**2) / 2) * maturity) / (sigma * np.sqrt(maturity))
+    d2 = d1 - sigma * np.sqrt(maturity)
+    if option_type == "CALL" :
+        return -(stock_price * norm.pdf(d1) * sigma) / (2 * np.sqrt(maturity)) - r_free * strike_price * np.exp(-r_free * maturity) * norm.cdf(d2)
     else:
-        return norm.cdf(d1) - 1
+        return -(stock_price * norm.pdf(d1) * sigma) / (2 * np.sqrt(maturity)) + r_free * strike_price * np.exp(-r_free * maturity) * norm.cdf(-d2)
 
-def calculate_gamma(S, K, r, T, sigma):
-    d1 = (np.log(S / K) + (r + (sigma**2) / 2) * T) / (sigma * np.sqrt(T))
-    return norm.pdf(d1) / (S * sigma * np.sqrt(T))
-
-def calculate_vega(S, K, r, T, sigma):
-    d1 = (np.log(S / K) + (r + (sigma**2) / 2) * T) / (sigma * np.sqrt(T))
-    return S * norm.pdf(d1) * np.sqrt(T)
-
-def calculate_theta(S, K, r, T, sigma, pricer_func):
-    d1 = (np.log(S / K) + (r + (sigma**2) / 2) * T) / (sigma * np.sqrt(T))
-    d2 = d1 - sigma * np.sqrt(T)
-    if pricer_func == call_pricer:
-        return -(S * norm.pdf(d1) * sigma) / (2 * np.sqrt(T)) - r * K * np.exp(-r * T) * norm.cdf(d2)
+def calculate_Rho(stock_price, strike_price, r_free, maturity, sigma, option_type):
+    d1 = (np.log(stock_price / strike_price) + (r_free + (sigma**2) / 2) * maturity) / (sigma * np.sqrt(maturity))
+    d2 = d1 - sigma * np.sqrt(maturity)
+    if option_type == "CALL" :
+        return strike_price * maturity * np.exp(-r_free * maturity) * norm.cdf(d2)
     else:
-        return -(S * norm.pdf(d1) * sigma) / (2 * np.sqrt(T)) + r * K * np.exp(-r * T) * norm.cdf(-d2)
+        return -strike_price * maturity * np.exp(-r_free * maturity) * norm.cdf(-d2)
 
-def calculate_rho(S, K, r, T, sigma, pricer_func):
-    d1 = (np.log(S / K) + (r + (sigma**2) / 2) * T) / (sigma * np.sqrt(T))
-    d2 = d1 - sigma * np.sqrt(T)
-    if pricer_func == call_pricer:
-        return K * T * np.exp(-r * T) * norm.cdf(d2)
-    else:
-        return -K * T * np.exp(-r * T) * norm.cdf(-d2)
+# UI Streamlit
+st.title("Option Pricer")
 
-def show_greeks_plot(S, K, r, T, sigma, pricer_func, delta_var, gamma_var, vega_var, theta_var, rho_var):
-    plot_window = Toplevel(fenetre)
-    plot_window.title("Greeks Plot")
+option = ["European option","American option", "Asian option"]
+option_style = st.selectbox("What would you like to price ?", option)
 
-    canvas = Canvas(plot_window)
-    scrollbar = Scrollbar(plot_window, orient="vertical", command=canvas.yview)
-    scrollable_frame = Frame(canvas)
+Options = ["CALL","PUT"]
+option_type = st.selectbox("What would you like to price ?", Options)
 
-    scrollable_frame.bind(
-        "<Configure>",
-        lambda e: canvas.configure(
-            scrollregion=canvas.bbox("all")
-        )
-    )
+stock_price = st.number_input("Stock price (S):", min_value=0.0, value=100.0)
+strike_price = st.number_input("Strike price (K):", min_value=0.0, value=115.0)
+r_free = st.number_input("Risk-free rate (r):", min_value=0.0, value=0.05)
+maturity = st.number_input("Time to maturity (T):", min_value=0.01, value=1.0)
+sigma = st.number_input("Volatility (σ):", min_value=0.01, value=0.2)
+dividend_yield = st.number_input("Dividend_yield :", min_value=0.0, value=0.02)
 
-    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-    canvas.configure(yscrollcommand=scrollbar.set)
 
-    canvas.pack(side="left", fill="both", expand=True)
-    scrollbar.pack(side="right", fill="y")
+if option_style == "European option":
+    if option_type == "CALL":
+        price = call_pricer(stock_price, strike_price, r_free, maturity, sigma, dividend_yield)
+    else :
+        price = put_pricer(stock_price, strike_price, r_free, maturity, sigma, dividend_yield)
+elif option_style == "American option":
+    if option_type == "CALL":
+        price = american_call_pricer(stock_price, strike_price, r_free, maturity, sigma, steps, dividend_yield)
+    else : 
+        price = american_put_pricer(stock_price, strike_price, r_free, maturity, sigma, steps, dividend_yield)
+else:
+    S_avg, S = asian_option_pricer(stock_price, r_free, sigma, maturity)
+    if option_type =="CALL":
+        price = asian_call_pricer (strike_price, S_avg, r_free, maturity, S)
+    else :
+        price = asian_put_pricer(strike_price, S_avg, r_free, maturity, S)
+st.write(f"The {option_type} option price is: {price:.2f}€")
 
-    row, col = 0, 0
+if option_type == "CALL" : 
+    BEP = strike_price + price
+else :
+    BEP = strike_price - price
+st.write(f"the break even point is: {BEP: .2f}€")
 
-    plot_size = (4, 3)
+Greeks_Delta = st.checkbox("DELTA Δ")
+if Greeks_Delta :
+    result_Delta = calculate_Delta (stock_price, strike_price, r_free, maturity, sigma, option_type)
+    st.write(f"Delta = {result_Delta:.4f}")
+    stock_prices = np.linspace(0 * stock_price, 2* stock_price, 200)
+    deltas = [calculate_Delta(stock_price, strike_price, r_free, maturity, sigma, option_type) for stock_price in stock_prices]
+    fig1, ax1 = plt.subplots(figsize=(8, 5))
+    ax1.plot(stock_prices, deltas, label="Delta", color='blue')
+    ax1.set_xlabel("Stock Price")
+    ax1.set_ylabel("Delta")
+    ax1.legend()
+    ax1.grid()
+    st.pyplot(fig1)
+    
+Greeks_Gamma = st.checkbox("GAMMA γ")
+if Greeks_Gamma : 
+    result_Gamma = calculate_Gamma(stock_price, strike_price, r_free, maturity, sigma)
+    st.write(f"Gamma = {result_Gamma:.4f}")
+    stock_prices = np.linspace(0 * stock_price, 2 * stock_price, 200)
+    gammas = [calculate_Gamma(stock_price, strike_price, r_free, maturity, sigma) for stock_price in stock_prices]
+    fig2, ax2 = plt.subplots(figsize=(8, 5))
+    ax2.plot(stock_prices, gammas, label="Gamma", color='blue')
+    ax2.set_xlabel("Stock Price")
+    ax2.set_ylabel("Gamma")
+    ax2.set_title("Gamma vs. Stock Price")
+    ax2.legend()
+    ax2.grid()
+    st.pyplot(fig2)
 
-    if delta_var.get():
-        stock_prices = np.linspace(S * 0.5, S * 1.5, 100)
-        delta_values = [calculate_delta(S, K, r, T, sigma, pricer_func) for S in stock_prices]
-        fig, ax = plt.subplots(figsize=plot_size)
-        ax.plot(stock_prices, delta_values, label='Delta', color='blue')
-        ax.set_xlabel('Price of the underlying asset (S)', fontsize=14)
-        ax.set_ylabel('Delta (∂V/∂S)', fontsize=14)
-        ax.legend()
-        ax.grid(True)
-        plt.subplots_adjust(left=0.2, right=0.9, top=0.85, bottom=0.25)
-        canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
-        canvas.draw()
-        canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
-        col += 1
-        if col > 2:
-            col = 0
-            row += 1
+Greeks_Vega = st.checkbox("VEGA ν")
+if Greeks_Vega : 
+    result_Vega = calculate_Vega(stock_price, strike_price, r_free, maturity, sigma)
+    st.write(f"Vega = {result_Vega:.4f}")
+    volatilities = np.linspace(0.01, 0.5, 200)
+    vegas = [calculate_Vega(stock_price, strike_price, r_free, maturity, sigma) for sigma in volatilities]
+    fig3, ax3 = plt.subplots(figsize=(8, 5))
+    ax3.plot(stock_prices, vegas, label="Vega", color='blue')
+    ax3.set_xlabel("Stock Price")
+    ax3.set_ylabel("Vega Value")
+    ax3.set_title("Vega vs. Stock Price")
+    ax3.legend()
+    ax3.grid()
+    st.pyplot(fig3)
 
-    if gamma_var.get():
-        stock_prices = np.linspace(S * 0.5, S * 1.5, 100)
-        gamma_values = [calculate_gamma(S, K, r, T, sigma) for S in stock_prices]
-        fig, ax = plt.subplots(figsize=plot_size)
-        ax.plot(stock_prices, gamma_values, label='Gamma', color='green')
-        ax.set_xlabel('Price of the underlying asset (S)', fontsize=14)
-        ax.set_ylabel('Gamma (∂²V/∂S²)', fontsize=14)
-        ax.legend()
-        ax.grid(True)
-        plt.subplots_adjust(left=0.2, right=0.9, top=0.85, bottom=0.25)
-        canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
-        canvas.draw()
-        canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
-        col += 1
-        if col > 2:
-            col = 0
-            row += 1
+Greeks_Theta = st.checkbox("THETA θ")
+if Greeks_Theta : 
+    result_Theta = calculate_Theta(stock_price, strike_price, r_free, maturity, sigma)
+    st.write(f"Theta = {result_Theta:.4f}")
+    maturities = np.linspace(0.01, 2, 100)
+    thetas = [calculate_Theta(stock_price, strike_price, r_free, maturity, sigma) for maturity in maturities]
+    fig4, ax4 = plt.subplots(figsize=(8, 5))
+    ax4.plot(stock_prices, thetas, label="Theta", color='blue')
+    ax4.set_xlabel("Maturity (Years)")
+    ax4.set_ylabel("Theta")
+    ax4.set_title("Theta vs. Maturity")
+    ax4.legend()
+    ax4.grid()
+    st.pyplot(fig4)
 
-    if vega_var.get():
-        volatilities = np.linspace(sigma * 0.5, sigma * 1.5, 100)
-        vega_values = [calculate_vega(S, K, r, T, sigma) for sigma in volatilities]
-        fig, ax = plt.subplots(figsize=plot_size)
-        ax.plot(volatilities, vega_values, label='Vega', color='red')
-        ax.set_xlabel('Implied volatility (σ)', fontsize=14)
-        ax.set_ylabel('Vega (∂V/∂σ)', fontsize=14)
-        ax.legend()
-        ax.grid(True)
-        plt.subplots_adjust(left=0.2, right=0.9, top=0.85, bottom=0.25)
-        canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
-        canvas.draw()
-        canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
-        col += 1
-        if col > 2:
-            col = 0
-            row += 1
+Greeks_Rho = st.checkbox("RHO ρ")
+if Greeks_Rho : 
+    result_Rho = calculate_Rho(stock_price, strike_price, r_free, maturity, sigma,option_type)
+    st.write(f"Rho = {result_Rho:.4f}")
+    risk_free_rates = np.linspace(0.01, 0.2, 200)
+    rhos = [calculate_Rho(stock_price, strike_price, r_free, maturity, sigma, option_type) for r_free in risk_free_rates]
+    fig5, ax5 = plt.subplots(figsize=(8, 5))
+    ax5.plot(risk_free_rates, rhos, label="Rho", color='blue')
+    ax5.set_xlabel("Risk-Free Rate")
+    ax5.set_ylabel("Rho")
+    ax5.set_title("Rho vs. Risk-Free Rate")
+    ax5.legend()
+    ax5.grid()
+    st.pyplot(fig5)
 
-    if theta_var.get():
-        times = np.linspace(T * 0.5, T * 1.5, 100)
-        theta_values = [calculate_theta(S, K, r, T, sigma, pricer_func) for T in times]
-        fig, ax = plt.subplots(figsize=plot_size)
-        ax.plot(times, theta_values, label='Theta', color='purple')
-        ax.set_xlabel('Time to expiration (T)', fontsize=14)
-        ax.set_ylabel('Theta (∂V/∂T)', fontsize=14)
-        ax.legend()
-        ax.grid(True)
-        plt.subplots_adjust(left=0.2, right=0.9, top=0.85, bottom=0.25)
-        canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
-        canvas.draw()
-        canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
-        col += 1
-        if col > 2:
-            col = 0
-            row += 1
 
-    if rho_var.get():
-        interest_rates = np.linspace(r * 0.5, r * 1.5, 100)
-        rho_values = [calculate_rho(S, K, r, T, sigma, pricer_func) for r in interest_rates]
-        fig, ax = plt.subplots(figsize=plot_size)
-        ax.plot(interest_rates, rho_values, label='Rho', color='orange')
-        ax.set_xlabel('Interest rate (r)', fontsize=14)
-        ax.set_ylabel('Rho (∂V/∂r)', fontsize=14)
-        ax.legend()
-        ax.grid(True)
-        plt.subplots_adjust(left=0.2, right=0.9, top=0.85, bottom=0.25)
-        canvas = FigureCanvasTkAgg(fig, master=scrollable_frame)
-        canvas.draw()
-        canvas.get_tk_widget().grid(row=row, column=col, padx=5, pady=5)
-        col += 1
-        if col > 2:
-            col = 0
-            row += 1
 
-# Bind the selection event
-liste.bind("<<ListboxSelect>>", on_select)
+"""
+# Define a range of Variables for visualization
+stock_prices = np.linspace(0.5 * stock_price, 1.5 * stock_price, 200)
+volatilities = np.linspace(0.1, 0.5, 200)
+maturities = np.linspace(0.01, 1, 200)  # Assuming maturity in years
+risk_free_rates = np.linspace(0.01, 0.1, 200)
 
-fenetre.mainloop()
+# Compute Greeks for each variable range
+deltas = [calculate_Delta(stock_price, strike_price, r_free, maturity, sigma, option_type) for stock_price in stock_prices]
+gammas = [calculate_Gamma(stock_price, strike_price, r_free, maturity, sigma) for stock_price in stock_prices]
+vegas = [calculate_Vega(stock_price, strike_price, r_free, maturity, sigma) for sigma in volatilities]
+thetas = [calculate_Theta(stock_price, strike_price, r_free, maturity, sigma) for maturity in maturities]
+rhos = [calculate_Rho(stock_price, strike_price, r_free, maturity, sigma) for r_free in risk_free_rates]
+
+# Delta Plot
+fig1, ax1 = plt.subplots(figsize=(8, 5))
+ax1.plot(stock_prices, deltas, label="Delta", color='blue')
+ax1.set_xlabel("Stock Price")
+ax1.set_ylabel("Delta")
+ax1.legend()
+ax1.grid()
+
+# Gamma Plot
+fig2, ax2 = plt.subplots(figsize=(8, 5))
+ax2.plot(stock_prices, gammas, label="Gamma", color='blue')
+ax2.set_xlabel("Stock Price")
+ax2.set_ylabel("Gamma")
+ax2.set_title("Gamma vs. Stock Price")
+ax2.legend()
+ax2.grid()
+
+# Vega Plot
+fig3, ax3 = plt.subplots(figsize=(8, 5))
+ax3.plot(stock_prices, vegas, label="Vega", color='blue')
+ax3.set_xlabel("Stock Price")
+ax3.set_ylabel("Vega Value")
+ax3.set_title("Vega vs. Stock Price")
+ax3.legend()
+ax3.grid()
+
+# Theta Plot
+fig4, ax4 = plt.subplots(figsize=(8, 5))
+ax4.plot(stock_prices, thetas, label="Theta", color='blue')
+ax4.set_xlabel("Maturity (Years)")
+ax4.set_ylabel("Theta")
+ax4.set_title("Theta vs. Maturity")
+ax4.legend()
+ax4.grid()
+
+# Rho Plot
+fig5, ax5 = plt.subplots(figsize=(8, 5))
+ax5.plot(stock_prices, rhos, label="Rho", color='blue')
+ax5.set_xlabel("Risk-Free Rate")
+ax5.set_ylabel("Rho")
+ax5.set_title("Rho vs. Risk-Free Rate")
+ax5.legend()
+ax5.grid()
+
+st.pyplot(fig1)
+st.pyplot(fig2)
+st.pyplot(fig3)
+st.pyplot(fig4)
+st.pyplot(fig5)"
+"""
